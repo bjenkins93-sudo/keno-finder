@@ -352,13 +352,14 @@
   <!-- Config panel -->
   <div class="panel">
     <div class="panel-title">⚙ Configuration</div>
-    <div class="form-group">
+    <div class="form-group" style="margin-bottom:1rem">
       <label>Cloudflare Worker URL</label>
       <div class="worker-row">
         <input type="text" id="workerUrl" placeholder="https://your-worker.your-subdomain.workers.dev" />
         <button class="btn btn-sm" onclick="testWorker()">Test</button>
       </div>
     </div>
+
   </div>
 
   <!-- Search panel -->
@@ -423,10 +424,13 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('endDate').value   = fmtDateInput(today);
   document.getElementById('startDate').value = fmtDateInput(weekAgo);
 
-  // Load saved worker URL
+  // Load saved worker URL and token
   const saved = localStorage.getItem('kenoWorkerUrl');
   if (saved) document.getElementById('workerUrl').value = saved;
+
 });
+
+
 
 function fmtDateInput(d) {
   return d.toISOString().split('T')[0];
@@ -542,7 +546,7 @@ async function runSearch() {
       const res = await fetch(`${workerUrl}/draws?date=${encodeURIComponent(dateStr)}`);
       if (!res.ok) {
         if (res.status === 401) {
-          showStatus('Worker returned 401 — token could not be obtained automatically. Try redeploying the worker.', 'error');
+          showStatus('Token expired. Grab a fresh one from DevTools, paste it in the Configuration panel and click Save.', 'error');
           break;
         }
         continue;
