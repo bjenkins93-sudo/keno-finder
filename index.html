@@ -338,6 +338,43 @@
     header h1 { font-size: 1.6rem; }
     .ball { width: 1.7rem; height: 1.7rem; font-size: 0.65rem; }
   }
+  /* ── Keno Grid ── */
+  .keno-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 5px;
+    margin-top: 0.5rem;
+    user-select: none;
+  }
+  .keno-cell {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--ball-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: bold;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.12s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .keno-cell:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .keno-cell.selected {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    box-shadow: 0 0 8px rgba(245,197,24,0.35);
+  }
+  @media (max-width: 560px) {
+    .keno-cell { font-size: 0.65rem; border-radius: 3px; gap: 3px; }
+  }
 </style>
 </head>
 <body>
@@ -375,10 +412,9 @@
         <input type="date" id="endDate" />
       </div>
       <div class="form-group full">
-        <label>Target Numbers (space or comma separated)</label>
-        <input type="text" id="targetNums" placeholder="e.g.  1 4 9 11 18"
-               oninput="updatePills()" />
-        <div class="number-preview" id="pillBox"></div>
+        <label>Select Your Numbers — <span id="spotLabel" style="color:var(--accent)">0-spot (none selected)</span></label>
+        <div class="keno-grid" id="kenoGrid"></div>
+        <button class="btn btn-sm" style="margin-top:0.7rem;width:100%" onclick="clearGrid()">Clear All</button>
       </div>
     </div>
     <button class="btn btn-primary" id="searchBtn" onclick="runSearch()">
@@ -424,9 +460,10 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('endDate').value   = fmtDateInput(today);
   document.getElementById('startDate').value = fmtDateInput(weekAgo);
 
+  buildGrid();
   // Load saved worker URL and token
   const saved = localStorage.getItem('kenoWorkerUrl');
-  if (saved) document.getElementById('workerUrl').value = saved;
+  if (saved) document.getElementById('workerUrl').value = saved.replace(/\/+$/, '');
 
 });
 
@@ -436,26 +473,47 @@ function fmtDateInput(d) {
   return d.toISOString().split('T')[0];
 }
 
-// ── Number pills ──────────────────────────────────────────────────────────────
-function parseNumbers(raw) {
-  return [...new Set(
-    raw.split(/[\s,]+/)
-       .map(s => s.trim())
-       .filter(s => /^\d+$/.test(s))
-       .map(Number)
-       .filter(n => n >= 1 && n <= 80)
-  )].sort((a,b) => a-b);
+// ── Keno Grid ─────────────────────────────────────────────────────────────────
+function buildGrid() {
+  const grid = document.getElementById('kenoGrid');
+  for (let n = 1; n <= 80; n++) {
+    const cell = document.createElement('div');
+    cell.className = 'keno-cell';
+    cell.textContent = n;
+    cell.dataset.num = n;
+    cell.addEventListener('click', () => toggleCell(cell, n));
+    grid.appendChild(cell);
+  }
 }
 
-function updatePills() {
-  const nums = parseNumbers(document.getElementById('targetNums').value);
-  const box = document.getElementById('pillBox');
-  box.innerHTML = nums.map(n => `<span class="pill">${n}</span>`).join('');
+function toggleCell(cell, n) {
+  cell.classList.toggle('selected');
+  updateSpotLabel();
+}
+
+function updateSpotLabel() {
+  const count = document.querySelectorAll('.keno-cell.selected').length;
+  const label = document.getElementById('spotLabel');
+  label.textContent = count === 0
+    ? '0-spot (none selected)'
+    : `${count}-spot selected: ${getSelectedNumbers().join(', ')}`;
+}
+
+function getSelectedNumbers() {
+  return [...document.querySelectorAll('.keno-cell.selected')]
+    .map(c => parseInt(c.dataset.num))
+    .sort((a, b) => a - b);
+}
+
+function clearGrid() {
+  document.querySelectorAll('.keno-cell.selected')
+    .forEach(c => c.classList.remove('selected'));
+  updateSpotLabel();
 }
 
 // ── Worker test ───────────────────────────────────────────────────────────────
 async function testWorker() {
-  const url = document.getElementById('workerUrl').value.trim();
+  const url = document.getElementById('workerUrl').value.trim().replace(/\/+$/, '');
   if (!url) return showStatus('Enter your Worker URL first.', 'error');
   showStatus('Testing worker connection...', 'info');
   try {
@@ -499,16 +557,16 @@ function dateRange(startStr, endStr) {
 
 // ── Main search ───────────────────────────────────────────────────────────────
 async function runSearch() {
-  const workerUrl = document.getElementById('workerUrl').value.trim();
+  const workerUrl = document.getElementById('workerUrl').value.trim().replace(/\/+$/, '');
   const startDate = document.getElementById('startDate').value;
   const endDate   = document.getElementById('endDate').value;
-  const targetNums = parseNumbers(document.getElementById('targetNums').value);
+  const targetNums = getSelectedNumbers();
 
   // Validate
   if (!workerUrl) return showStatus('Please enter your Cloudflare Worker URL.', 'error');
   if (!startDate || !endDate) return showStatus('Please select a date range.', 'error');
   if (startDate > endDate) return showStatus('Start date must be before end date.', 'error');
-  if (targetNums.length === 0) return showStatus('Please enter at least one target number.', 'error');
+  if (targetNums.length === 0) return showStatus('Please select at least one number on the Keno grid.', 'error');
 
   localStorage.setItem('kenoWorkerUrl', workerUrl);
 
@@ -567,22 +625,7 @@ async function runSearch() {
         draws = [];
       }
 
-      // Debug logging
-      if (i === 0) {
-        const d = draws[0];
-        if (d) {
-          const rawNums = d.numbers || d.Numbers || d.WinningNumbers || [];
-          const parsed = typeof rawNums[0] === 'object'
-            ? rawNums.filter(n => n.position >= 1 && n.position <= 20).map(n => n.value)
-            : rawNums.slice(0, 20);
-          console.log('[DEBUG] draws.length:', draws.length);
-          console.log('[DEBUG] draws[0] keys:', Object.keys(d));
-          console.log('[DEBUG] rawNums[0]:', rawNums[0]);
-          console.log('[DEBUG] parsed nums:', parsed);
-          console.log('[DEBUG] targetSet:', [...targetSet]);
-          console.log('[DEBUG] isMatch test:', [...targetSet].every(n => new Set(parsed.map(String)).has(n)));
-        }
-      }
+
 
       for (const draw of draws) {
         const rawNums = draw.numbers || draw.Numbers || draw.WinningNumbers || [];
