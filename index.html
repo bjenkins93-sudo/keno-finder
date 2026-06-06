@@ -553,20 +553,38 @@ async function runSearch() {
       }
       const json = await res.json();
 
-      // Unwrap envelope
-      let draws = Array.isArray(json) ? json : (json.data || json.draws || json.results || []);
+      // Unwrap envelope — API returns {statusCode,message,error,data:[...]}
+      let draws;
+      if (Array.isArray(json)) {
+        draws = json;
+      } else if (json.data && Array.isArray(json.data)) {
+        draws = json.data;
+      } else if (json.draws && Array.isArray(json.draws)) {
+        draws = json.draws;
+      } else if (json.results && Array.isArray(json.results)) {
+        draws = json.results;
+      } else {
+        draws = [];
+      }
+
+      // Log first date's draw count to console for debugging
+      if (i === 0) console.log(`[DEBUG] First date draws: ${draws.length}, sample:`, draws[0]);
 
       for (const draw of draws) {
         const rawNums = draw.numbers || draw.Numbers || draw.WinningNumbers || [];
-        // Extract values, filter to positions 1-20 (exclude booster)
+        if (!rawNums.length) continue;
+
+        // Extract values — filter positions 1-20 to exclude booster ball
         let nums;
-        if (rawNums.length && typeof rawNums[0] === 'object') {
+        if (typeof rawNums[0] === 'object') {
           nums = rawNums
             .filter(n => n.position >= 1 && n.position <= 20)
             .map(n => n.value);
         } else {
           nums = rawNums.slice(0, 20);
         }
+
+        if (!nums.length) continue;
 
         const numSet = new Set(nums.map(String));
         const isMatch = [...targetSet].every(n => numSet.has(n));
