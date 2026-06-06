@@ -567,8 +567,22 @@ async function runSearch() {
         draws = [];
       }
 
-      // Log first date's draw count to console for debugging
-      if (i === 0) console.log(`[DEBUG] First date draws: ${draws.length}, sample:`, draws[0]);
+      // Debug logging
+      if (i === 0) {
+        const d = draws[0];
+        if (d) {
+          const rawNums = d.numbers || d.Numbers || d.WinningNumbers || [];
+          const parsed = typeof rawNums[0] === 'object'
+            ? rawNums.filter(n => n.position >= 1 && n.position <= 20).map(n => n.value)
+            : rawNums.slice(0, 20);
+          console.log('[DEBUG] draws.length:', draws.length);
+          console.log('[DEBUG] draws[0] keys:', Object.keys(d));
+          console.log('[DEBUG] rawNums[0]:', rawNums[0]);
+          console.log('[DEBUG] parsed nums:', parsed);
+          console.log('[DEBUG] targetSet:', [...targetSet]);
+          console.log('[DEBUG] isMatch test:', [...targetSet].every(n => new Set(parsed.map(String)).has(n)));
+        }
+      }
 
       for (const draw of draws) {
         const rawNums = draw.numbers || draw.Numbers || draw.WinningNumbers || [];
