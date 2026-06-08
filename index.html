@@ -134,12 +134,7 @@
     cursor: pointer;
   }
 
-  .worker-row {
-    display: flex;
-    gap: 0.6rem;
-    align-items: stretch;
-  }
-  .worker-row input { flex: 1; }
+
 
   /* ── Number pills ── */
   .number-preview {
@@ -386,18 +381,7 @@
 
 <div class="container">
 
-  <!-- Config panel -->
-  <div class="panel">
-    <div class="panel-title">⚙ Configuration</div>
-    <div class="form-group" style="margin-bottom:1rem">
-      <label>Cloudflare Worker URL</label>
-      <div class="worker-row">
-        <input type="text" id="workerUrl" placeholder="https://your-worker.your-subdomain.workers.dev" />
-        <button class="btn btn-sm" onclick="testWorker()">Test</button>
-      </div>
-    </div>
 
-  </div>
 
   <!-- Search panel -->
   <div class="panel">
@@ -462,8 +446,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
   buildGrid();
   // Load saved worker URL and token
-  const saved = localStorage.getItem('kenoWorkerUrl');
-  if (saved) document.getElementById('workerUrl').value = saved.replace(/\/+$/, '');
 
 });
 
@@ -512,23 +494,7 @@ function clearGrid() {
 }
 
 // ── Worker test ───────────────────────────────────────────────────────────────
-async function testWorker() {
-  const url = document.getElementById('workerUrl').value.trim().replace(/\/+$/, '');
-  if (!url) return showStatus('Enter your Worker URL first.', 'error');
-  showStatus('Testing worker connection...', 'info');
-  try {
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.status) {
-      showStatus('✓ Worker connected successfully!', 'success');
-      localStorage.setItem('kenoWorkerUrl', url);
-    } else {
-      showStatus('Worker responded but returned unexpected data.', 'error');
-    }
-  } catch(e) {
-    showStatus(`Worker connection failed: ${e.message}`, 'error');
-  }
-}
+
 
 // ── Status helper ─────────────────────────────────────────────────────────────
 function showStatus(msg, type='info') {
@@ -557,18 +523,16 @@ function dateRange(startStr, endStr) {
 
 // ── Main search ───────────────────────────────────────────────────────────────
 async function runSearch() {
-  const workerUrl = document.getElementById('workerUrl').value.trim().replace(/\/+$/, '');
+  const workerUrl = 'https://keno-worker.bjenkins93.workers.dev';
   const startDate = document.getElementById('startDate').value;
   const endDate   = document.getElementById('endDate').value;
   const targetNums = getSelectedNumbers();
 
   // Validate
-  if (!workerUrl) return showStatus('Please enter your Cloudflare Worker URL.', 'error');
   if (!startDate || !endDate) return showStatus('Please select a date range.', 'error');
   if (startDate > endDate) return showStatus('Start date must be before end date.', 'error');
   if (targetNums.length === 0) return showStatus('Please select at least one number on the Keno grid.', 'error');
 
-  localStorage.setItem('kenoWorkerUrl', workerUrl);
 
   // Reset
   allMatches = [];
@@ -604,7 +568,7 @@ async function runSearch() {
       const res = await fetch(`${workerUrl}/draws?date=${encodeURIComponent(dateStr)}`);
       if (!res.ok) {
         if (res.status === 401) {
-          showStatus('Token expired. Grab a fresh one from DevTools, paste it in the Configuration panel and click Save.', 'error');
+          showStatus('Token expired — please try your search again.', 'error');
           break;
         }
         continue;
