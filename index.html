@@ -298,6 +298,27 @@
     color: var(--text);
     transition: all 0.15s;
   }
+  .booster-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+  }
+  .booster-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .ball.booster {
+    background: var(--accent2);
+    border-color: var(--accent2);
+    color: #fff;
+    box-shadow: 0 0 8px rgba(224,92,26,0.35);
+  }
   .ball.hit {
     background: var(--accent);
     border-color: var(--accent);
@@ -370,6 +391,86 @@
   @media (max-width: 560px) {
     .keno-cell { font-size: 0.65rem; border-radius: 3px; gap: 3px; }
   }
+  /* ── Payout row ── */
+  .payout-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+  }
+  .payout-label {
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .payout-amount {
+    color: var(--green);
+    font-weight: bold;
+    font-size: 0.95rem;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Summary panel ── */
+  .summary-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+  }
+  .summary-title {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 0.7rem;
+  }
+  .summary-breakdown {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+  }
+  .summary-chip {
+    background: var(--ball-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.3rem 0.7rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text);
+  }
+  .summary-chip strong {
+    color: var(--accent);
+  }
+  .summary-total {
+    font-family: var(--mono);
+    font-size: 1rem;
+    color: var(--green);
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Disclaimer ── */
+  .disclaimer {
+    background: rgba(245,197,24,0.06);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-align: center;
+    padding: 0.8rem 2rem;
+  }
 </style>
 </head>
 <body>
@@ -423,12 +524,20 @@
       <div class="results-count" id="resultsCount">0 <span>matches found</span></div>
       <button class="btn btn-sm" onclick="exportCSV()">↓ Export CSV</button>
     </div>
+    <div class="summary-panel" id="summaryPanel" style="display:none">
+      <div class="summary-title">Search Summary</div>
+      <div id="summaryBreakdown" class="summary-breakdown"></div>
+      <div class="summary-total" id="summaryTotal"></div>
+    </div>
     <div id="matchList"></div>
     <div class="no-results" id="noResults">NO MATCHES FOUND IN DATE RANGE</div>
   </div>
 
 </div>
 
+<div class="disclaimer">
+  ⚠ Disclaimer: Past results do not affect future drawings. This app is for entertainment purposes only. Please play responsibly.
+</div>
 <footer>Ohio Keno Pattern Finder · Data via Ohio Lottery · Not affiliated with Ohio Lottery</footer>
 
 <script>
@@ -521,6 +630,32 @@ function dateRange(startStr, endStr) {
   return dates;
 }
 
+// ── Payout tables ────────────────────────────────────────────────────────────
+// Returns payout in dollars for a $1 bet, or null if no qualifying win.
+// Only the highest combination is paid (handled by using hitCount directly).
+// Booster multiplies the base payout for winning results.
+function calcPayout(spotCount, hitCount, booster) {
+  const multiplier = (booster && booster > 0) ? booster : 1;
+
+  if (spotCount === 4) {
+    if (hitCount === 4) return 72  * multiplier;
+    if (hitCount === 3) return 5   * multiplier;
+    if (hitCount === 2) return 1   * multiplier;
+    return null; // 0 or 1 hits — no payout, don't show
+  }
+
+  if (spotCount === 5) {
+    if (hitCount === 5) return 410 * multiplier;
+    if (hitCount === 4) return 18  * multiplier;
+    if (hitCount === 3) return 2   * multiplier;
+    return null; // 0, 1, or 2 hits — no payout, don't show
+  }
+
+  // For all other spot counts fall back to exact-match-only behavior
+  if (hitCount === spotCount) return 0; // 0 = "match but no payout table yet"
+  return null;
+}
+
 // ── Main search ───────────────────────────────────────────────────────────────
 async function runSearch() {
   const workerUrl = 'https://keno-worker.bjenkins93.workers.dev';
@@ -541,6 +676,9 @@ async function runSearch() {
   document.getElementById('noResults').className = 'no-results';
   document.getElementById('resultsSection').style.display = 'none';
   document.getElementById('resultsCount').innerHTML = '0 <span>matches found</span>';
+  document.getElementById('summaryPanel').style.display = 'none';
+  document.getElementById('summaryBreakdown').innerHTML = '';
+  document.getElementById('summaryTotal').textContent = '';
   hideStatus();
 
   const dates = dateRange(startDate, endDate);
@@ -595,28 +733,37 @@ async function runSearch() {
         const rawNums = draw.numbers || draw.Numbers || draw.WinningNumbers || [];
         if (!rawNums.length) continue;
 
-        // Extract values — filter positions 1-20 to exclude booster ball
-        let nums;
+        // Extract values — filter positions 1-20, booster is position 21
+        let nums, booster = null;
         if (typeof rawNums[0] === 'object') {
           nums = rawNums
             .filter(n => n.position >= 1 && n.position <= 20)
             .map(n => n.value);
+          const boosterObj = rawNums.find(n => n.position === 21);
+          if (boosterObj) booster = boosterObj.value;
         } else {
           nums = rawNums.slice(0, 20);
+          if (rawNums.length > 20) booster = rawNums[20];
         }
 
         if (!nums.length) continue;
 
         const numSet = new Set(nums.map(String));
-        const isMatch = [...targetSet].every(n => numSet.has(n));
+        const hitCount = [...targetSet].filter(n => numSet.has(n)).length;
+        const spotCount = targetSet.size;
 
-        if (isMatch) {
+        // Determine if this draw qualifies based on spot type
+        const payout = calcPayout(spotCount, hitCount, booster);
+        const qualifies = payout !== null;
+
+        if (qualifies) {
           const drawNum = draw.externalDrawId || draw.DrawNumber || draw.id || '?';
-          const match = { date: dateStr, drawNum, numbers: nums.sort((a,b)=>a-b) };
+          const match = { date: dateStr, drawNum, numbers: nums.sort((a,b)=>a-b), booster, hitCount, spotCount, payout };
           allMatches.push(match);
           renderCard(match, targetSet);
           document.getElementById('resultsCount').innerHTML =
             `${allMatches.length} <span>match${allMatches.length !== 1 ? 'es':''} found</span>`;
+          updateSummary();
         }
       }
     } catch(e) {
@@ -644,6 +791,46 @@ async function runSearch() {
   }
 }
 
+// ── Update summary panel ─────────────────────────────────────────────────────
+function updateSummary() {
+  if (!allMatches.length) return;
+
+  const spotCount = allMatches[0].spotCount;
+  const hasPayout = [4, 5].includes(spotCount);
+
+  // Count hits by hitCount
+  const counts = {};
+  let totalPayout = 0;
+  for (const m of allMatches) {
+    counts[m.hitCount] = (counts[m.hitCount] || 0) + 1;
+    if (m.payout > 0) totalPayout += m.payout;
+  }
+
+  // Build breakdown chips — highest hit count first
+  const breakdown = document.getElementById('summaryBreakdown');
+  breakdown.innerHTML = Object.keys(counts)
+    .sort((a, b) => b - a)
+    .map(hits => {
+      const count = counts[hits];
+      const examplePayout = hasPayout ? calcPayout(spotCount, parseInt(hits), 1) : 0;
+      const payStr = (hasPayout && examplePayout > 0)
+        ? ` · <strong>$${examplePayout.toFixed(0)}</strong> base`
+        : '';
+      return `<div class="summary-chip"><strong>${count}</strong> × ${hits}-of-${spotCount}${payStr}</div>`;
+    })
+    .join('');
+
+  // Total winnings
+  const totalEl = document.getElementById('summaryTotal');
+  if (hasPayout) {
+    totalEl.textContent = `Total potential winnings ($1 bet): $${totalPayout.toFixed(2)}`;
+  } else {
+    totalEl.textContent = `${allMatches.length} total matches`;
+  }
+
+  document.getElementById('summaryPanel').style.display = 'block';
+}
+
 // ── Render a match card ───────────────────────────────────────────────────────
 function renderCard(match, targetSet) {
   const list = document.getElementById('matchList');
@@ -655,12 +842,32 @@ function renderCard(match, targetSet) {
     return `<div class="ball${hit?' hit':''}">${n}</div>`;
   }).join('');
 
+  const boosterHtml = match.booster !== null
+    ? `<div class="booster-row"><span class="booster-label">Booster:</span><div class="ball booster">${match.booster}</div></div>`
+    : '';
+
+  // Payout display
+  let payoutHtml = '';
+  if (match.payout !== null && match.payout > 0) {
+    payoutHtml = `<div class="payout-row">
+      <span class="payout-label">${match.hitCount} of ${match.spotCount} hit</span>
+      <span class="payout-amount">$${match.payout.toFixed(2)} payout</span>
+    </div>`;
+  } else if (match.spotCount !== 4) {
+    // Non-payout-table spot — just show hit count
+    payoutHtml = `<div class="payout-row">
+      <span class="payout-label">${match.hitCount} of ${match.spotCount} hit</span>
+    </div>`;
+  }
+
   card.innerHTML = `
     <div class="card-top">
       <div class="card-date">${match.date}</div>
       <div class="card-draw">DRAW #${match.drawNum}</div>
     </div>
     <div class="balls">${balls}</div>
+    ${boosterHtml}
+    ${payoutHtml}
   `;
   list.appendChild(card);
 }
@@ -668,9 +875,9 @@ function renderCard(match, targetSet) {
 // ── CSV export ────────────────────────────────────────────────────────────────
 function exportCSV() {
   if (!allMatches.length) return showStatus('No matches to export.', 'error');
-  const rows = [['Date','Draw Number','Winning Numbers']];
+  const rows = [['Date','Draw Number','Winning Numbers','Booster','Numbers Hit','Payout ($1 bet)','Spot Count']];
   for (const m of allMatches) {
-    rows.push([m.date, m.drawNum, m.numbers.join(' ')]);
+    rows.push([m.date, m.drawNum, m.numbers.join(' '), m.booster ?? '', m.hitCount, m.payout > 0 ? m.payout.toFixed(2) : '0.00', m.spotCount]);
   }
   const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
