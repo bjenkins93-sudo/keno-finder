@@ -459,6 +459,46 @@
     border-top: 1px solid var(--border);
   }
 
+  /* ── Filter row ── */
+  .filter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin-top: 0.8rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .filter-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .filter-select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    padding: 0.35rem 0.7rem;
+    outline: none;
+    cursor: pointer;
+    flex: 1;
+    min-width: 160px;
+  }
+  .filter-select:focus { border-color: var(--accent); }
+  .filter-count {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+
   /* ── Disclaimer ── */
   .disclaimer {
     background: rgba(245,197,24,0.06);
@@ -528,6 +568,13 @@
       <div class="summary-title">Search Summary</div>
       <div id="summaryBreakdown" class="summary-breakdown"></div>
       <div class="summary-total" id="summaryTotal"></div>
+      <div class="filter-row">
+        <label class="filter-label">Filter Results:</label>
+        <select id="hitFilter" class="filter-select" onchange="applyFilter()">
+          <option value="all">All results</option>
+        </select>
+        <span class="filter-count" id="filterCount"></span>
+      </div>
     </div>
     <div id="matchList"></div>
     <div class="no-results" id="noResults">NO MATCHES FOUND IN DATE RANGE</div>
@@ -679,6 +726,8 @@ async function runSearch() {
   document.getElementById('summaryPanel').style.display = 'none';
   document.getElementById('summaryBreakdown').innerHTML = '';
   document.getElementById('summaryTotal').textContent = '';
+  document.getElementById('hitFilter').innerHTML = '<option value="all">All results</option>';
+  document.getElementById('filterCount').textContent = '';
   hideStatus();
 
   const dates = dateRange(startDate, endDate);
@@ -807,12 +856,12 @@ function updateSummary() {
   }
 
   // Build breakdown chips — highest hit count first
+  const sortedHits = Object.keys(counts).map(Number).sort((a, b) => b - a);
   const breakdown = document.getElementById('summaryBreakdown');
-  breakdown.innerHTML = Object.keys(counts)
-    .sort((a, b) => b - a)
+  breakdown.innerHTML = sortedHits
     .map(hits => {
       const count = counts[hits];
-      const examplePayout = hasPayout ? calcPayout(spotCount, parseInt(hits), 1) : 0;
+      const examplePayout = hasPayout ? calcPayout(spotCount, hits, 1) : 0;
       const payStr = (hasPayout && examplePayout > 0)
         ? ` · <strong>$${examplePayout.toFixed(0)}</strong> base`
         : '';
@@ -828,7 +877,76 @@ function updateSummary() {
     totalEl.textContent = `${allMatches.length} total matches`;
   }
 
+  // Build filter dropdown options
+  const filter = document.getElementById('hitFilter');
+  const currentVal = filter.value;
+  filter.innerHTML = '<option value="all">All results</option>';
+  sortedHits.forEach(hits => {
+    const opt = document.createElement('option');
+    opt.value = hits;
+    opt.textContent = `${hits}-of-${spotCount} only`;
+    filter.appendChild(opt);
+    // Add "X and above" options for hits below the max
+    if (hits < Math.max(...sortedHits)) {
+      const optAbove = document.createElement('option');
+      optAbove.value = `${hits}+`;
+      optAbove.textContent = `${hits}-of-${spotCount} and above`;
+      filter.appendChild(optAbove);
+    }
+  });
+  // Restore previous selection if still valid
+  if ([...filter.options].some(o => o.value === currentVal)) {
+    filter.value = currentVal;
+  } else {
+    filter.value = 'all';
+  }
+
   document.getElementById('summaryPanel').style.display = 'block';
+  applyFilter();
+}
+
+// ── Filter ───────────────────────────────────────────────────────────────────
+function applyFilter() {
+  const val = document.getElementById('hitFilter').value;
+  const cards = document.querySelectorAll('.match-card');
+  let visible = 0;
+
+  cards.forEach(card => {
+    const hits = parseInt(card.dataset.hits);
+    let show = false;
+    if (val === 'all') {
+      show = true;
+    } else if (val.endsWith('+')) {
+      const min = parseInt(val);
+      show = hits >= min;
+    } else {
+      show = hits === parseInt(val);
+    }
+    card.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+
+  // Update filter count
+  const total = allMatches.length;
+  const countEl = document.getElementById('filterCount');
+  countEl.textContent = val === 'all'
+    ? `${total} shown`
+    : `${visible} of ${total} shown`;
+
+  // Update total winnings for filtered view
+  const spotCount = allMatches[0]?.spotCount;
+  const hasPayout = [4, 5].includes(spotCount);
+  if (hasPayout) {
+    let filteredPayout = 0;
+    allMatches.forEach(m => {
+      const card = document.querySelector(`.match-card[data-drawnum="${m.drawNum}"][data-date="${m.date}"]`);
+      if (card && card.style.display !== 'none' && m.payout > 0) {
+        filteredPayout += m.payout;
+      }
+    });
+    document.getElementById('summaryTotal').textContent =
+      `Total potential winnings ($1 bet): $${filteredPayout.toFixed(2)}${val !== 'all' ? ' (filtered)' : ''}`;
+  }
 }
 
 // ── Render a match card ───────────────────────────────────────────────────────
@@ -836,6 +954,9 @@ function renderCard(match, targetSet) {
   const list = document.getElementById('matchList');
   const card = document.createElement('div');
   card.className = 'match-card';
+  card.dataset.hits = match.hitCount;
+  card.dataset.drawnum = match.drawNum;
+  card.dataset.date = match.date;
 
   const balls = match.numbers.map(n => {
     const hit = targetSet.has(String(n));
