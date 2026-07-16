@@ -542,6 +542,12 @@
         <button class="btn btn-sm" style="margin-top:0.7rem;width:100%" onclick="clearGrid()">Clear All</button>
       </div>
     </div>
+    <div class="form-group full" id="filterPreRow" style="display:none">
+      <label>Minimum Hit Filter <span style="color:var(--muted);font-size:0.65rem">(applied during search to limit results)</span></label>
+      <select id="hitFilter" class="filter-select" style="width:100%;margin-top:0.3rem" onchange="applyFilter()">
+        <option value="all">All results</option>
+      </select>
+    </div>
     <button class="btn btn-primary" id="searchBtn" onclick="runSearch()">
       ▶ Run Search
     </button>
@@ -568,13 +574,7 @@
       <div class="summary-title">Search Summary</div>
       <div id="summaryBreakdown" class="summary-breakdown"></div>
       <div class="summary-total" id="summaryTotal"></div>
-      <div class="filter-row">
-        <label class="filter-label">Filter Results:</label>
-        <select id="hitFilter" class="filter-select" onchange="applyFilter()">
-          <option value="all">All results</option>
-        </select>
-        <span class="filter-count" id="filterCount"></span>
-      </div>
+      <div class="filter-count" id="filterCount"></div>
     </div>
     <div id="matchList"></div>
     <div class="no-results" id="noResults">NO MATCHES FOUND IN DATE RANGE</div>
@@ -629,12 +629,49 @@ function toggleCell(cell, n) {
   updateSpotLabel();
 }
 
+// Default minimum hit filter per spot count
+function defaultFilter(spotCount) {
+  const defaults = { 1:'1', 2:'2', 3:'3', 4:'3+', 5:'4+', 6:'4+', 7:'4+', 8:'5+', 9:'5+', 10:'6+' };
+  return defaults[spotCount] || 'all';
+}
+
+function buildFilterOptions(spotCount) {
+  const sel = document.getElementById('hitFilter');
+  const payoutRows = {
+    1:[1], 2:[2], 3:[3,2], 4:[4,3,2], 5:[5,4,3],
+    6:[6,5,4,3], 7:[7,6,5,4,3], 8:[8,7,6,5,4],
+    9:[9,8,7,6,5,4], 10:[10,9,8,7,6,5,0]
+  };
+  const levels = payoutRows[spotCount] || [];
+  sel.innerHTML = '<option value="all">All results</option>';
+  // "X and above" options (skip 0-hit special case)
+  levels.filter(h => h > 0).forEach(h => {
+    if (h < Math.max(...levels.filter(x => x > 0))) {
+      const o = document.createElement('option');
+      o.value = `${h}+`;
+      o.textContent = `${h}-of-${spotCount} and above`;
+      sel.appendChild(o);
+    }
+  });
+  // Exact options
+  levels.forEach(h => {
+    const o = document.createElement('option');
+    o.value = String(h);
+    o.textContent = h === 0 ? `0-of-${spotCount} (no hits bonus)` : `${h}-of-${spotCount} only`;
+    sel.appendChild(o);
+  });
+  // Set default
+  sel.value = defaultFilter(spotCount);
+  document.getElementById('filterPreRow').style.display = spotCount > 0 ? '' : 'none';
+}
+
 function updateSpotLabel() {
   const count = document.querySelectorAll('.keno-cell.selected').length;
   const label = document.getElementById('spotLabel');
   label.textContent = count === 0
     ? '0-spot (none selected)'
     : `${count}-spot selected: ${getSelectedNumbers().join(', ')}`;
+  buildFilterOptions(count);
 }
 
 function getSelectedNumbers() {
@@ -684,22 +721,85 @@ function dateRange(startStr, endStr) {
 function calcPayout(spotCount, hitCount, booster) {
   const multiplier = (booster && booster > 0) ? booster : 1;
 
+  if (spotCount === 1) {
+    if (hitCount === 1) return 2    * multiplier;
+    return null;
+  }
+
+  if (spotCount === 2) {
+    if (hitCount === 2) return 11   * multiplier;
+    return null;
+  }
+
+  if (spotCount === 3) {
+    if (hitCount === 3) return 27   * multiplier;
+    if (hitCount === 2) return 2    * multiplier;
+    return null;
+  }
+
   if (spotCount === 4) {
-    if (hitCount === 4) return 72  * multiplier;
-    if (hitCount === 3) return 5   * multiplier;
-    if (hitCount === 2) return 1   * multiplier;
-    return null; // 0 or 1 hits — no payout, don't show
+    if (hitCount === 4) return 72   * multiplier;
+    if (hitCount === 3) return 5    * multiplier;
+    if (hitCount === 2) return 1    * multiplier;
+    return null;
   }
 
   if (spotCount === 5) {
-    if (hitCount === 5) return 410 * multiplier;
-    if (hitCount === 4) return 18  * multiplier;
-    if (hitCount === 3) return 2   * multiplier;
-    return null; // 0, 1, or 2 hits — no payout, don't show
+    if (hitCount === 5) return 410  * multiplier;
+    if (hitCount === 4) return 18   * multiplier;
+    if (hitCount === 3) return 2    * multiplier;
+    return null;
   }
 
-  // For all other spot counts fall back to exact-match-only behavior
-  if (hitCount === spotCount) return 0; // 0 = "match but no payout table yet"
+  if (spotCount === 6) {
+    if (hitCount === 6) return 1100 * multiplier;
+    if (hitCount === 5) return 57   * multiplier;
+    if (hitCount === 4) return 7    * multiplier;
+    if (hitCount === 3) return 1    * multiplier;
+    return null;
+  }
+
+  if (spotCount === 7) {
+    if (hitCount === 7) return 2000 * multiplier;
+    if (hitCount === 6) return 100  * multiplier;
+    if (hitCount === 5) return 11   * multiplier;
+    if (hitCount === 4) return 5    * multiplier;
+    if (hitCount === 3) return 1    * multiplier;
+    return null;
+  }
+
+  if (spotCount === 8) {
+    if (hitCount === 8) return 10000 * multiplier;
+    if (hitCount === 7) return 300   * multiplier;
+    if (hitCount === 6) return 50    * multiplier;
+    if (hitCount === 5) return 15    * multiplier;
+    if (hitCount === 4) return 2     * multiplier;
+    return null;
+  }
+
+  if (spotCount === 9) {
+    if (hitCount === 9) return 25000 * multiplier;
+    if (hitCount === 8) return 2000  * multiplier;
+    if (hitCount === 7) return 100   * multiplier;
+    if (hitCount === 6) return 20    * multiplier;
+    if (hitCount === 5) return 5     * multiplier;
+    if (hitCount === 4) return 2     * multiplier;
+    return null;
+  }
+
+  if (spotCount === 10) {
+    if (hitCount === 10) return 100000 * multiplier;
+    if (hitCount === 9)  return 5000   * multiplier;
+    if (hitCount === 8)  return 500    * multiplier;
+    if (hitCount === 7)  return 50     * multiplier;
+    if (hitCount === 6)  return 10     * multiplier;
+    if (hitCount === 5)  return 2      * multiplier;
+    if (hitCount === 0)  return 5      * multiplier;
+    return null;
+  }
+
+  // Unknown spot count — exact match only, no payout table
+  if (hitCount === spotCount) return 0;
   return null;
 }
 
@@ -726,7 +826,6 @@ async function runSearch() {
   document.getElementById('summaryPanel').style.display = 'none';
   document.getElementById('summaryBreakdown').innerHTML = '';
   document.getElementById('summaryTotal').textContent = '';
-  document.getElementById('hitFilter').innerHTML = '<option value="all">All results</option>';
   document.getElementById('filterCount').textContent = '';
   hideStatus();
 
@@ -809,12 +908,13 @@ async function runSearch() {
           const drawNum = draw.externalDrawId || draw.DrawNumber || draw.id || '?';
           const match = { date: dateStr, drawNum, numbers: nums.sort((a,b)=>a-b), booster, hitCount, spotCount, payout };
           allMatches.push(match);
-          renderCard(match, targetSet);
-          document.getElementById('resultsCount').innerHTML =
-            `${allMatches.length} <span>match${allMatches.length !== 1 ? 'es':''} found</span>`;
-          updateSummary();
         }
       }
+
+      // Update match count once per day, not per match
+      document.getElementById('resultsCount').innerHTML =
+        `${allMatches.length} <span>match${allMatches.length !== 1 ? 'es':''} found</span>`;
+
     } catch(e) {
       // Network error — skip this date silently
       console.warn(`Error fetching ${dateStr}:`, e);
@@ -824,7 +924,7 @@ async function runSearch() {
     await new Promise(r => setTimeout(r, 0));
   }
 
-  // Done
+  // Done — build summary and render cards once at the end
   document.getElementById('searchBtn').disabled = false;
   document.getElementById('searchBtn').textContent = '▶ Run Search';
   document.getElementById('searchBtn').onclick = runSearch;
@@ -833,10 +933,13 @@ async function runSearch() {
   if (allMatches.length === 0 && !searchAborted) {
     document.getElementById('noResults').className = 'no-results visible';
     showStatus('Search complete. No matches found.', 'info');
-  } else if (!searchAborted) {
-    showStatus(`Search complete. ${allMatches.length} match${allMatches.length!==1?'es':''} found.`, 'success');
   } else {
-    showStatus('Search stopped by user.', 'info');
+    updateSummary();
+    if (!searchAborted) {
+      showStatus(`Search complete. ${allMatches.length} match${allMatches.length!==1?'es':''} found.`, 'success');
+    } else {
+      showStatus('Search stopped by user.', 'info');
+    }
   }
 }
 
@@ -845,7 +948,7 @@ function updateSummary() {
   if (!allMatches.length) return;
 
   const spotCount = allMatches[0].spotCount;
-  const hasPayout = [4, 5].includes(spotCount);
+  const hasPayout = spotCount >= 1 && spotCount <= 10;
 
   // Count hits by hitCount
   const counts = {};
@@ -906,46 +1009,50 @@ function updateSummary() {
 }
 
 // ── Filter ───────────────────────────────────────────────────────────────────
-function applyFilter() {
+function passesFilter(match) {
   const val = document.getElementById('hitFilter').value;
-  const cards = document.querySelectorAll('.match-card');
-  let visible = 0;
+  if (val === 'all') return true;
+  if (val.endsWith('+')) return match.hitCount >= parseInt(val);
+  return match.hitCount === parseInt(val);
+}
 
-  cards.forEach(card => {
-    const hits = parseInt(card.dataset.hits);
-    let show = false;
-    if (val === 'all') {
-      show = true;
-    } else if (val.endsWith('+')) {
-      const min = parseInt(val);
-      show = hits >= min;
-    } else {
-      show = hits === parseInt(val);
-    }
-    card.style.display = show ? '' : 'none';
-    if (show) visible++;
-  });
+function applyFilter() {
+  if (!allMatches.length) return;
+  const spotCount = allMatches[0].spotCount;
+  const hasPayout = spotCount >= 1 && spotCount <= 10;
+  const targetNums = getSelectedNumbers();
+  const targetSet = new Set(targetNums.map(String));
 
-  // Update filter count
-  const total = allMatches.length;
-  const countEl = document.getElementById('filterCount');
-  countEl.textContent = val === 'all'
-    ? `${total} shown`
-    : `${visible} of ${total} shown`;
+  // Re-render match list from allMatches using current filter
+  const list = document.getElementById('matchList');
+  list.innerHTML = '';
+  let rendered = 0;
+  let filteredPayout = 0;
 
-  // Update total winnings for filtered view
-  const spotCount = allMatches[0]?.spotCount;
-  const hasPayout = [4, 5].includes(spotCount);
-  if (hasPayout) {
-    let filteredPayout = 0;
-    allMatches.forEach(m => {
-      const card = document.querySelector(`.match-card[data-drawnum="${m.drawNum}"][data-date="${m.date}"]`);
-      if (card && card.style.display !== 'none' && m.payout > 0) {
-        filteredPayout += m.payout;
+  for (const m of allMatches) {
+    if (passesFilter(m)) {
+      if (rendered < 500) {
+        renderCard(m, targetSet);
+        rendered++;
       }
-    });
+      if (m.payout > 0) filteredPayout += m.payout;
+    }
+  }
+
+  const val = document.getElementById('hitFilter').value;
+  const filtered = allMatches.filter(m => passesFilter(m));
+  const countEl = document.getElementById('filterCount');
+
+  let countMsg = val === 'all'
+    ? `${allMatches.length} total`
+    : `${filtered.length} of ${allMatches.length} total`;
+  if (filtered.length > 500) countMsg += ` · showing first 500`;
+  countEl.textContent = countMsg;
+
+  if (hasPayout) {
+    const suffix = val !== 'all' ? ' (filtered)' : '';
     document.getElementById('summaryTotal').textContent =
-      `Total potential winnings ($1 bet): $${filteredPayout.toFixed(2)}${val !== 'all' ? ' (filtered)' : ''}`;
+      `Total potential winnings ($1 bet): $${filteredPayout.toFixed(2)}${suffix}`;
   }
 }
 
